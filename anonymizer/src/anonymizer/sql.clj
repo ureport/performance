@@ -1,4 +1,5 @@
 (ns anonymizer.sql
+  (:use [clojure.tools.cli :only [cli]])
   (:require [clojure.java.jdbc :as sql])
   (:gen-class)
   (import (java.sql DriverManager Connection ResultSet Timestamp)))
@@ -48,38 +49,46 @@
     (.updateString rs "name" (md5 (.getString rs "name")))
     (.updateTimestamp rs "birthdate" (Timestamp. (System/currentTimeMillis)))
     (.updateRow rs)
-    ;;(prn "row: " row)
-    (prn (format "[%d] " row) "before: " before)
-    (prn (format "[%d] " row) "after:  " (map-from-rs rs))
+    (prn "row: " (+ row 1))
+    ;;(prn (format "[%d] " row) "before: " before)
+    ;;(prn (format "[%d] " row) "after:  " (map-from-rs rs))
 ))
 
 
-(defn loop-rows [rs, current-row, batch-size, func]
+(defn loop-rows [rs, current-row, batch-size, func]  
   (loop [rs* rs
-         row current-row]  
-    (if (and (< row (+ current-row batch-size))
-             (.next rs*))
+         row current-row] 
+    (prn "row " row ", max " (+ current-row batch-size))
+    (if (< row (+ current-row batch-size))      
       (do 
+        (.next rs*)
         (func rs row)
         (recur rs* (+ row 1)))
       row)))
 
 
-(defn anonymise [batch-size max-rows]
+(defn anonymise [start-at batch-size max-rows]
   (sql/with-connection database-url
     (with-open [stmt (.createStatement (sql/connection) ResultSet/TYPE_SCROLL_SENSITIVE ResultSet/CONCUR_UPDATABLE)]
-      (.setFetchSize stmt 50)
+      (.setFetchSize stmt batch-size)
       (with-open [rs (.executeQuery stmt (format "SELECT id, name, birthdate FROM rapidsms_contact order by id LIMIT %d" max-rows))]
+        (.absolute rs start-at)
         (loop [rs* rs
-               row 1]
+               row start-at]
           (let [row* (sql/transaction
-                      (loop-rows rs* row batch-size update-row))]            
+                      (loop-rows rs* row batch-size update-row))] 
+            ;;(prn "--> row* " row* ", row " row)
             (if (> row* row)
               (recur rs* row*)
-              (- row* 1))))        
+               row*)))        
         ))))
 
-;;(anonymise 20 )
+;;(anonymise 1 3 3)
 
 (defn -main [& args]
-  (prn "batch-size " (first args) ", limit " (second args)))
+  (let [start-at (Integer/parseInt (first args))
+        batch-size (Integer/parseInt (second args))
+        limit (Integer/parseInt (last args))]
+    (prn "start-at" start-at ", batch-size " batch-size ", limit " limit)
+    (let [updated-count (anonymise start-at batch-size limit)]
+      (prn "Got upto row: " updated-count))))
