@@ -49,20 +49,18 @@
     (.updateString rs "name" (md5 (.getString rs "name")))
     (.updateTimestamp rs "birthdate" (Timestamp. (System/currentTimeMillis)))
     (.updateRow rs)
-    (println (format "  UPDATE: row: %d"  row))
-    (prn "    before: " before)
-    (prn "    after:  " (map-from-rs rs))
+    (println (format "UPDATE ROW: [%d]"  row))
+    (println (format "  before: %s" before))
+    (println (format "  after : %s" (map-from-rs rs)))
 ))
 
 (defn next-row [rs]
   (let [success (.next rs)]
-    ;;(println (format "  NEXT-SUCCESS: %s" success))
     success))
 
 (defn loop-rows [rs, current-row, batch-size, func]       
   (loop [rs* rs
          row current-row] 
-    ;;(prn "LOOP: row " row ", max " (+ current-row batch-size))
     (if (and  (< row (+ current-row batch-size))
               (next-row rs*))
       (do
@@ -76,7 +74,7 @@
   (sql/with-connection database-url
     (with-open [stmt (.createStatement (sql/connection) ResultSet/TYPE_SCROLL_SENSITIVE ResultSet/CONCUR_UPDATABLE)]
       (.setFetchSize stmt batch-size)
-      (with-open [rs (.executeQuery stmt "SELECT id, name, birthdate FROM rapidsms_contact order by id LIMIT 3")]        
+      (with-open [rs (.executeQuery stmt (format "SELECT id, name, birthdate FROM rapidsms_contact order by id LIMIT %d" max-rows))]        
         (if (> start-at 1)
           (if (not (.absolute rs (- start-at 1)))
             (throw (Throwable. "You have asked to start beyond the end of the resultset!"))))
@@ -84,8 +82,7 @@
         (loop [rs* rs
                row start-at]
           (let [row* (sql/transaction
-                      (loop-rows rs* row batch-size update-row))] 
-            ;;(prn "--> row* " row* ", row " row)
+                      (loop-rows rs* row batch-size update-row))]             
             (if (> row* row)
               (recur rs* row*)
                row*)))        
@@ -99,7 +96,7 @@
         limit (Integer/parseInt (last args))]
     (prn "start-at" start-at ", batch-size " batch-size ", limit " limit)
     (let [updated-count (anonymise start-at batch-size limit)]
-      (prn "Got upto row: " updated-count))))
+      (println (format "Next Row to anonymise: [%d]" updated-count)))))
 
 
 
