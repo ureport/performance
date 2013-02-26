@@ -1,5 +1,6 @@
 (ns anonymizer.sql
   (:require [clojure.java.jdbc :as sql])
+  (:gen-class)
   (import (java.sql DriverManager Connection ResultSet Timestamp)))
 
 ;;http://jdbc.postgresql.org/documentation/head/query.html
@@ -7,12 +8,17 @@
 (def database-url "jdbc:postgresql://localhost:5432/ureport_perf")
 
 
-(defn sql-command [conn]
-  (str conn))
+(defn map-from-rs [rs]
+  {:name (.getString rs "name")
+   :birthdate (.getString rs "birthdate")})
+
+;; timestamptz and varchar
+(defn debug-meta [rs]
+        (let [rs-meta (.getMetaData rs)]
+           (prn (.getColumnTypeName rs-meta 3)) 
+           (prn (.getColumnTypeName rs-meta 2))))
 
 
-
-ResultSet/TYPE_SCROLL_SENSITIVE ResultSet/CONCUR_UPDATABLE
 (defn prepare-update-cursor-stmt [sql] 
   (sql/prepare-statement (sql/connection) sql 
                          :result-type :scroll-insensitive
@@ -20,20 +26,8 @@ ResultSet/TYPE_SCROLL_SENSITIVE ResultSet/CONCUR_UPDATABLE
                          :fetch-size 20
                          :max-rows 20))
 
-
-(sql/with-connection database-url
-  (sql/transaction
-   (with-open [stmt (prepare-update-cursor-stmt "SELECT * FROM rapidsms_contact")]    
-     (prn stmt)
-     
-     )))
-
-(sql/with-connection database-url
-  (with-open [stmt (.createStatement sql/connection)]
-    (prn stmt)
-             ))
-
-#http://docs.oracle.com/javase/1.4.2/docs/api/java/sql/ResultSet.html
+ 
+;;http://docs.oracle.com/javase/1.4.2/docs/api/java/sql/ResultSet.html
 
 (defn md5
   "Generate a md5 checksum for the given string"
@@ -46,56 +40,46 @@ ResultSet/TYPE_SCROLL_SENSITIVE ResultSet/CONCUR_UPDATABLE
          (new java.math.BigInteger 1 (.digest hash-bytes)) ; Positive and the size of the number
          16))) ; Use base16 i.e. hex
 
-(md5 "This is my name")
 
-(def conn (DriverManager/getConnection database-url))
 
-(def stmt (.createStatement conn ResultSet/TYPE_SCROLL_SENSITIVE ResultSet/CONCUR_UPDATABLE))
 
-(def rs (.executeQuery stmt "SELECT id, name, birthdate FROM rapidsms_contact order by id LIMIT 10"))
-
-(def rs-meta (.getMetaData rs))
-
-(.getColumnTypeName rs-meta 3) ;; timestampz
-(.getColumnTypeName rs-meta 2) ;; varchar 
-
-(.absolute rs 10)
-(.getString rs "name")
-(.getString rs "birthdate")
-
-(.updateString rs "name" (md5 (.getString rs "name")))
-(.updateTimestamp rs "birthdate" (Timestamp. (System/currentTimeMillis)))
-(.updateRow rs)
-
-(.close rs)
-(.close stmt)
-(.close conn)
-
-(sql/with-connection database-url
-  (with-open [stmt (.createStatement (sql/connection) ResultSet/TYPE_SCROLL_SENSITIVE ResultSet/CONCUR_UPDATABLE)]
-    (.setFetchSize stmt 50)
-    (with-open [rs (.executeQuery stmt "SELECT id, name, birthdate FROM rapidsms_contact order by id")]
-      ;;(debug-meta rs) 
-      (sql/transaction
-       (update-row rs 13))
-      )))
-
-(defn update-row [rs location]
-  (.absolute rs location)
+(defn update-row [rs row]
   (let [before (map-from-rs rs)]
     (.updateString rs "name" (md5 (.getString rs "name")))
     (.updateTimestamp rs "birthdate" (Timestamp. (System/currentTimeMillis)))
     (.updateRow rs)
-    (prn "before: " before)
-    (prn "after:  " (map-from-rs rs))))
+    ;;(prn "row: " row)
+    (prn (format "[%d] " row) "before: " before)
+    (prn (format "[%d] " row) "after:  " (map-from-rs rs))
+))
 
-(defn map-from-rs [rs]
-  {:name (.getString rs "name")
-   :birthdate (.getString rs "birthdate")})
 
-;; timestamptz and varchar
-(defn debug-meta [rs]
-        (let [rs-meta (.getMetaData rs)]
-           (prn (.getColumnTypeName rs-meta 3)) 
-           (prn (.getColumnTypeName rs-meta 2))))
+(defn loop-rows [rs, current-row, batch-size, func]
+  (loop [rs* rs
+         row current-row]  
+    (if (and (< row (+ current-row batch-size))
+             (.next rs*))
+      (do 
+        (func rs row)
+        (recur rs* (+ row 1)))
+      row)))
 
+
+(defn anonymise [batch-size max-rows]
+  (sql/with-connection database-url
+    (with-open [stmt (.createStatement (sql/connection) ResultSet/TYPE_SCROLL_SENSITIVE ResultSet/CONCUR_UPDATABLE)]
+      (.setFetchSize stmt 50)
+      (with-open [rs (.executeQuery stmt (format "SELECT id, name, birthdate FROM rapidsms_contact order by id LIMIT %d" max-rows))]
+        (loop [rs* rs
+               row 1]
+          (let [row* (sql/transaction
+                      (loop-rows rs* row batch-size update-row))]            
+            (if (> row* row)
+              (recur rs* row*)
+              (- row* 1))))        
+        ))))
+
+;;(anonymise 20 )
+
+(defn -main [& args]
+  (prn "batch-size " (first args) ", limit " (second args)))

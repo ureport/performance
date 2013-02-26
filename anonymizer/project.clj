@@ -7,4 +7,4 @@
                  [org.clojure/java.jdbc "0.2.3"]
                  [postgresql "9.1-901.jdbc4"]]
 
-  :main anonymizer.core)
+  :main anonymizer.sql)
