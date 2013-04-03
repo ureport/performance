@@ -6,12 +6,27 @@
 
 ;;http://jdbc.postgresql.org/documentation/head/query.html
 ;;http://www.postgresql.org/docs/8.1/static/
-(def database-url "jdbc:postgresql://localhost:5432/ureport_perf")
+(def local-database-url "jdbc:postgresql://localhost:5432/ureport_perf")
+
+(defn random-number [length]
+  (let [s (str (rand))
+        c (count s)]
+    (subs s 2 (+ length 2))))
+
+(defn pick-random-char [str]
+  (get str (int (rand (count str)))))
+
+(defn random-phone-number []  
+  (str (apply str (repeatedly 3 (partial pick-random-char "+-"))) (random-number 10)))
 
 
 (defn map-from-rs [rs]
   {:name (.getString rs "name")
    :birthdate (.getString rs "birthdate")})
+
+(defn map-from-rs-connection [rs]
+  {:identity (.getString rs "identity")})
+
 
 ;; timestamptz and varchar
 (defn debug-meta [rs]
@@ -44,7 +59,7 @@
 
 
 
-(defn update-row [rs row]
+(defn update-row-contact [rs row]
   (let [before (map-from-rs rs)]
     (.updateString rs "name" (md5 (.getString rs "name")))
     (.updateTimestamp rs "birthdate" (Timestamp. (System/currentTimeMillis)))
@@ -53,6 +68,16 @@
     (println (format "  before: %s" before))
     (println (format "  after : %s" (map-from-rs rs)))
 ))
+
+(defn update-row-connection [rs row]
+  (let [before (map-from-rs-connection rs)]
+    (.updateString rs "identity" (random-phone-number))
+    (.updateRow rs)
+    (println (format "UPDATE ROW: [%d]"  row))
+    (println (format "  before: %s" before))
+    (println (format "  after : %s" (map-from-rs-connection rs)))
+))
+
 
 (defn next-row [rs]
   (let [success (.next rs)]
@@ -68,13 +93,13 @@
         (recur rs* (+ row 1)))
       row)))
 
-
-(defn anonymise [start-at batch-size max-rows] 
+;; (format "SELECT id, name, birthdate FROM rapidsms_contact order by id LIMIT %d" max-rows)
+(defn anonymise [database-url start-at batch-size max-rows update-func] 
   (println (format "anonymise start-at %d, batch-size %d, max-rows %d" start-at batch-size max-rows))
   (sql/with-connection database-url
     (with-open [stmt (.createStatement (sql/connection) ResultSet/TYPE_SCROLL_SENSITIVE ResultSet/CONCUR_UPDATABLE)]
       (.setFetchSize stmt batch-size)
-      (with-open [rs (.executeQuery stmt (format "SELECT id, name, birthdate FROM rapidsms_contact order by id LIMIT %d" max-rows))]        
+      (with-open [rs (.executeQuery stmt (format "SELECT id, identity FROM rapidsms_connection order by id LIMIT %d" max-rows))]        
         (if (> start-at 1)
           (if (not (.absolute rs (- start-at 1)))
             (throw (Throwable. "You have asked to start beyond the end of the resultset!"))))
@@ -82,21 +107,27 @@
         (loop [rs* rs
                row start-at]
           (let [row* (sql/transaction
-                      (loop-rows rs* row batch-size update-row))]             
+                      (loop-rows rs* row batch-size update-func))]             
             (if (> row* row)
               (recur rs* row*)
                row*)))        
         ))))
 
+
+;; rapidsms_connection - identity
 ;;(anonymise 1 3 3)
+(defn get-arg [args index]
+  (get (apply vector args) index))
 
 (defn -main [& args]
-  (let [start-at (Integer/parseInt (first args))
-        batch-size (Integer/parseInt (second args))
-        limit (Integer/parseInt (last args))]
-    (prn "start-at" start-at ", batch-size " batch-size ", limit " limit)
-    (let [updated-count (anonymise start-at batch-size limit)]
-      (println (format "Next Row to anonymise: [%d]" updated-count)))))
+  (let [db-url (get-arg args 0)
+        start-at (Integer/parseInt (get-arg args 1))
+        batch-size (Integer/parseInt (get-arg args 2))
+        limit (Integer/parseInt (get-arg args 3))]
+    (prn "db-url" db-url "start-at" start-at ", batch-size " batch-size ", limit " limit)
+    (let [updated-count (anonymise db-url start-at batch-size limit update-row-connection)]
+      (println (format "Next Row to anonymise: [%d]" updated-count)))
+))
 
 
 
@@ -135,3 +166,5 @@
 ;; (.close rs)
 ;; (.close stmt)
 ;; (.close conn)
+
+
