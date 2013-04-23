@@ -1,0 +1,19 @@
+* Experimental notes around poll PERFORMANCE
+
+* Create contacts
+
+** No bulk INSERT
+The function just ends up running 180k single INSERT statements and then doing a massive commit.
+
+** Adding categories happens after contacts have been added which means that if adding contacts fails, the categories may not get added
+
+** 
+
+
+* Suggested improvements
+
+** Add some kind of indicator / message log to the Poll so that we can display to James what has / has not happened
+
+* Research Questions
+
+** How is it possible for it to fail silently on any stage?
