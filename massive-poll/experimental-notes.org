@@ -7,12 +7,24 @@ The function just ends up running 180k single INSERT statements and then doing a
 
 ** Adding categories happens after contacts have been added which means that if adding contacts fails, the categories may not get added
 
-** 
+** Transactions seem to be executed on the db around each item
+*** Create poll with bulk
+*** Add yes / no categories
+*** Adding the poll to the site
+
+* Start polls
+
+** Start poll javascript doesn't report an error if it fails (replicate by killing celery)
 
 
 * Suggested improvements
 
 ** Add some kind of indicator / message log to the Poll so that we can display to James what has / has not happened
+
+** Add a "Verify" button to poll to check if it works
+** Make send messages a trigger from a button
+** Add a poll audit table which records when polls have been executed and verified
+
 
 * Research Questions
 

@@ -15,7 +15,7 @@ with Browser() as browser:
      browser.find_by_css("input[type=submit]").first.click()
 
      pollName = "PerfTestPoll-" + str(uuid.uuid4())
-     print "Created poll called " + pollName                               
+     print "Creating poll called " + pollName                               
      browser.fill("name", pollName)
      browser.fill("question_en", "Will this poll work?")
      browser.select("groups", "54")
