@@ -29,3 +29,5 @@ The function just ends up running 180k single INSERT statements and then doing a
 * Research Questions
 
 ** How is it possible for it to fail silently on any stage?
+
+* Receive responses

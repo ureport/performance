@@ -1,2 +1,3 @@
 jmeter/*/errors
 *.pyc
+.DS_Store
