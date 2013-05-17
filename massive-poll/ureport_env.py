@@ -3,9 +3,9 @@ from django.core.management import setup_environ
 
 sys.path.insert(0,os.getcwd()) 
 
-import perf_settings
+import ci_settings
  
-setup_environ(perf_settings)
+setup_environ(ci_settings)
 
 import djcelery
 djcelery.setup_loader()
