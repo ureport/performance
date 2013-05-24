@@ -13,7 +13,7 @@ def generate_random_percentage():
 
 districts = []
 
-file = open('/Users/Nimrod/ThoughtWorks/Code/unicef/ureport/performance/massive-poll/southsudan_districts.txt')
+file = open('southsudan_districts.txt')
 line = file.readline().strip()
 
 while line:
